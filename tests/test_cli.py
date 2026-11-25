@@ -49,3 +49,16 @@ def test_install_dry_run_cli_downloads_nothing(tmp_path, capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["source"].startswith("https://registry.npmjs.org/")
     assert not root.exists()
+
+
+def test_cli_parser_prog_uses_hhub_alias_when_invoked_as_hhub(monkeypatch):
+    from harnesshub.cli import parser
+
+    monkeypatch.setattr("sys.argv", ["/usr/local/bin/hhub", "--help"])
+    assert parser().prog == "hhub"
+
+    monkeypatch.setattr("sys.argv", ["/usr/local/bin/harnesshub", "--help"])
+    assert parser().prog == "harnesshub"
+
+    monkeypatch.setattr("sys.argv", ["pytest"])
+    assert parser().prog == "harnesshub"

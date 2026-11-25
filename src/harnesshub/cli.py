@@ -63,7 +63,9 @@ def _fmt_cli_reset(ts: float | int | None) -> str:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="harnesshub", description="Менеджер подписочных AI harness")
+    invoked = Path(sys.argv[0]).stem if sys.argv else ""
+    prog = invoked if invoked in ("hhub", "harnesshub") else "harnesshub"
+    p = argparse.ArgumentParser(prog=prog, description="Менеджер подписочных AI harness")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--data-dir", type=Path, default=user_data_path("harnesshub", appauthor=False))
     p.add_argument("--json", action="store_true", help="Машиночитаемый вывод")

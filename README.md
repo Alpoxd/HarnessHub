@@ -7,27 +7,65 @@
 
 ![TUI HarnessHub](docs/preview.svg)
 
-## Запуск
+## Установка и запуск
+
+### Быстрая установка (одной командой)
+
+Предварительно ставить Python или Git не нужно — установщик сам поставит [uv](https://docs.astral.sh/uv/) (если его ещё нет), изолированный Python 3.11+ и добавит команду `hhub` (полный алиас `harnesshub`) в `PATH`. Повторный запуск той же команды обновляет HarnessHub.
+
+**Linux / macOS:**
+
+```bash
+curl -LsSf https://raw.githubusercontent.com/Alpoxd/HarnessHub/main/install.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/Alpoxd/HarnessHub/main/install.ps1 | iex
+```
+
+**Windows (CMD):**
+
+```cmd
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Alpoxd/HarnessHub/main/install.ps1 | iex"
+```
+
+После установки доступны обе команды — короткая `hhub` и полная `harnesshub`:
+
+```bash
+hhub          # запустить TUI
+hhub doctor   # проверить окружение и клиентов
+hhub list     # список поддерживаемых harness
+```
+
+Полезные опции:
+- Конкретная ветка, тег или коммит: `HARNESSHUB_REF=v0.2.0 curl -LsSf ... | sh` (или `$env:HARNESSHUB_REF="v0.2.0"; irm ... | iex`).
+- Без изменения `PATH`: `HARNESSHUB_NO_MODIFY_PATH=1`.
+- Прокси: подхватываются стандартные `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`.
+- Удаление (сохраняя локальные данные и профили): `uv tool uninstall harnesshub` или запуск установщика с `HARNESSHUB_UNINSTALL=1`.
+
+### Из исходников / для разработки
 
 Нужны Python 3.11+ и [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
-uv run harnesshub
+uv run hhub
 ```
 
-Постоянная команда из любого каталога:
+Постоянная editable-команда из локального клона:
 
 ```bash
 uv tool install --editable .
-harnesshub
+hhub
 ```
 
 Без uv:
 
 ```bash
 python -m pip install .
-harnesshub
+hhub
 ```
 
 Менеджер обнаруживает клиенты в PATH и в собственном каталоге установок.
