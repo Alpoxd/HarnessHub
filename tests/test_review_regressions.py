@@ -418,8 +418,8 @@ def test_agy_token_cache_invalidation_and_cross_platform_paths(tmp_path: Path) -
     stats2 = scan_agy_token_stats(base)
     assert stats2["total_tokens"] == 450
 
-    assert strip_file_uri("file:///C:/Users/dev/repo") == "C:/Users/dev/repo"
-    assert strip_file_uri("file:///home/user/my%20repo") == "/home/user/my repo"
+    assert strip_file_uri("file:///C:/Users/dev/repo").replace("\\", "/") == "C:/Users/dev/repo"
+    assert strip_file_uri("file:///home/user/my%20repo").replace("\\", "/") == "/home/user/my repo"
     assert cwd_matches(str(tmp_path / "repo" / "sub"), str(tmp_path / "repo"))
     assert not cwd_matches(str(tmp_path / "repo2"), str(tmp_path / "repo"))
 

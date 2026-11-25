@@ -7,6 +7,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +17,7 @@ from pathlib import Path
 from harnesshub.errors import HubError
 from harnesshub.locking import FileLock, resource_lock
 from harnesshub.network import proxy_environment, public_proxy, redact_output
-from harnesshub.proc import terminate_process_tree
+from harnesshub.proc import hidden_popen_kwargs, terminate_process_tree, wrap_windows_command
 
 NPM_REGISTRY = "https://registry.npmjs.org/"
 
@@ -92,8 +95,9 @@ class Installer:
 
     @staticmethod
     def _run(command: list[str], env: dict[str, str], cwd: Path, timeout=900) -> str:
+        extra_kwargs = {"start_new_session": True} if os.name != "nt" else hidden_popen_kwargs()
         process = subprocess.Popen(
-            command,
+            wrap_windows_command(command),
             env=env,
             cwd=cwd,
             stdin=subprocess.DEVNULL,
@@ -102,7 +106,7 @@ class Installer:
             text=True,
             encoding="utf-8",
             errors="replace",
-            start_new_session=os.name != "nt",
+            **extra_kwargs,
         )
         try:
             output, _ = process.communicate(timeout=timeout)
@@ -207,23 +211,60 @@ class Installer:
                 launcher = [node, str(executable)]
             else:
                 with executable.open("rb") as stream:
-                    magic = stream.read(4)
-                if magic[:2] != b"MZ" and magic not in {
+                    header = stream.read(128)
+                magic = header[:4]
+                first_line = header.splitlines()[0] if header else b""
+                if first_line.startswith(b"#!") and b"node" in first_line.lower():
+                    launcher = [node, str(executable)]
+                elif magic[:2] == b"MZ" or magic in {
                     b"\x7fELF",
                     b"\xcf\xfa\xed\xfe",
                     b"\xfe\xed\xfa\xcf",
                     b"\xca\xfe\xba\xbe",
                     b"\xbe\xba\xfe\xca",
                 }:
+                    launcher = [str(executable)]
+                else:
                     raise HubError("Формат npm launcher изменился; установка не активирована")
-                launcher = [str(executable)]
             return executable, launcher, str(manifest.get("version", "unknown"))
         except (KeyError, TypeError, ValueError, OSError) as exc:
             raise HubError("Установленный пакет не содержит ожидаемую команду") from exc
 
+    @staticmethod
+    def _download_script_urllib(url: str, path: Path, env: dict[str, str]) -> None:
+        if urllib.parse.urlsplit(url).scheme.lower() != "https":
+            raise HubError("Загрузка официального установщика разрешена только по HTTPS")
+        proxies: dict[str, str] = {}
+        for scheme, keys in (
+            ("https", ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy")),
+            ("http", ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")),
+        ):
+            for key in keys:
+                val = env.get(key)
+                if val:
+                    proxies[scheme] = val
+                    break
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler(proxies))
+        req = urllib.request.Request(url, headers={"User-Agent": "HarnessHub/0.2"})
+        try:
+            with opener.open(req, timeout=30) as resp:
+                final_url = resp.geturl()
+                if urllib.parse.urlsplit(final_url).scheme.lower() != "https":
+                    raise HubError("Официальный установщик перенаправил на небезопасный протокол")
+                data = resp.read(4 * 1024 * 1024 + 1)
+        except (urllib.error.URLError, OSError) as exc:
+            msg = redact_output(str(exc), env)
+            raise HubError(f"Не удалось скачать официальный установщик: {msg}") from exc
+        if not 0 < len(data) <= 4 * 1024 * 1024:
+            raise HubError("Официальный сервер не вернул установщик допустимого размера")
+        path.write_bytes(data)
+
     def _download_script(self, url: str, path: Path, env: dict[str, str]) -> None:
         curl = shutil.which("curl")
         if curl is None:
+            if os.name == "nt":
+                self._download_script_urllib(url, path, env)
+                return
             raise HubError("Для загрузки официального установщика нужен curl")
         command = [
             curl,
@@ -323,7 +364,10 @@ class Installer:
                         "provider": provider,
                         "path": str(path),
                         "source": plan["source"],
-                        "note": "Официальный Windows-установщик скачан; запусти его отдельно",
+                        "note": (
+                            "Официальный Windows-установщик скачан; запусти: "
+                            f'powershell -ExecutionPolicy Bypass -File "{path}"'
+                        ),
                     }
                 if source.method == "npm":
                     executable, launcher, version = self._install_npm(source, directory, env)

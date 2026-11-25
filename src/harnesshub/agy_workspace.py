@@ -8,10 +8,18 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harnesshub.errors import BusyError
+from harnesshub.errors import BusyError, HubError
 from harnesshub.locking import FileLock, inspect_lock_state, resource_lock
 from harnesshub.providers.agy import read_agy_profile_models
-from harnesshub.providers.base import atomic_write_json, atomic_write_text, safe_json_read
+from harnesshub.providers.base import (
+    atomic_write_json,
+    atomic_write_text,
+    create_link,
+    is_link_or_junction,
+    safe_json_read,
+    same_path_or_file,
+    unlink_link,
+)
 
 if TYPE_CHECKING:
     from harnesshub.service import Hub
@@ -35,6 +43,22 @@ def _posix_passwd_home() -> Path | None:
         return None
 
 
+def _system_real_home() -> Path | None:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            buf = ctypes.create_unicode_buffer(32768)
+            # CSIDL_PROFILE (0x0028) ignores overridden USERPROFILE
+            res = ctypes.windll.shell32.SHGetFolderPathW(0, 0x0028, 0, 0, buf)  # type: ignore[attr-defined]
+            if res == 0 and buf.value:
+                return Path(buf.value).expanduser().resolve()
+        except (ImportError, AttributeError, OSError):
+            pass
+        return None
+    return _posix_passwd_home()
+
+
 def resolve_real_home(hub: Hub | None = None, explicit_home: Path | None = None) -> Path:
     """Resolve the user's real home directory, even when launched inside an AGY profile."""
     if explicit_home is not None:
@@ -48,23 +72,23 @@ def resolve_real_home(hub: Hub | None = None, explicit_home: Path | None = None)
             return Path(configured).expanduser().resolve()
 
     env_home = Path.home().expanduser().resolve()
-    pw_home = _posix_passwd_home()
-    if pw_home is None or env_home == pw_home:
+    sys_home = _system_real_home()
+    if sys_home is None or env_home == sys_home:
         return env_home
 
-    agy_profiles_root = Path(os.environ.get("AGY_PROFILES", pw_home / "agy-profiles")).resolve()
+    agy_profiles_root = Path(os.environ.get("AGY_PROFILES", sys_home / "agy-profiles")).resolve()
     if env_home == agy_profiles_root or env_home.is_relative_to(agy_profiles_root):
-        return pw_home
+        return sys_home
     if hub is not None:
         managed_root = (hub.store.root / "profiles").resolve()
         if env_home.is_relative_to(managed_root):
-            return pw_home
+            return sys_home
         for prof in hub.profiles("agy"):
             if prof["name"] == "main":
                 continue
             try:
                 if env_home == Path(prof["path"]).expanduser().resolve():
-                    return pw_home
+                    return sys_home
             except OSError:
                 continue
     return env_home
@@ -274,23 +298,30 @@ def _merge_profile_history_into_shared(prof_base: Path, shared_base: Path) -> di
     return {"copied_files": copied_files, "merged_history_lines": merged_history_lines}
 
 
-def _ensure_symlink(src: Path, dst: Path) -> None:
-    if os.path.islink(dst):
-        try:
-            if Path(os.readlink(dst)) == src:
-                return
-        except OSError:
-            pass
-        dst.unlink()
+def _ensure_symlink(src: Path, dst: Path, *, copy_fallback: bool = False) -> None:
+    if same_path_or_file(dst, src):
+        return
+    if is_link_or_junction(dst):
+        unlink_link(dst)
     elif dst.exists():
         if dst.is_dir():
-            if dst.resolve() == src.resolve():
-                return
             shutil.rmtree(dst)
         else:
             dst.unlink()
-    dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    dst.symlink_to(src)
+    try:
+        create_link(src, dst)
+    except OSError as exc:
+        if copy_fallback:
+            dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if src.is_dir():
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+            elif src.is_file():
+                shutil.copy2(src, dst)
+            return
+        raise HubError(
+            f"Не удалось связать {dst} -> {src}: {exc}. "
+            "На Windows держи профили на одном NTFS-диске или включи Режим разработчика."
+        ) from exc
 
 
 def ensure_agy_profile_shared_history(
@@ -351,14 +382,15 @@ def agy_history_status(hub: Hub, *, home: Path | None = None) -> dict[str, Any]:
             links = []
             for sub in SHARED_HISTORY_DIRS:
                 target = prof_base / sub
-                if target.is_symlink() and os.path.realpath(target) == str(shared_base / sub):
+                if is_link_or_junction(target) and same_path_or_file(target, shared_base / sub):
                     links.append(True)
-                elif target.exists() or target.is_symlink():
+                elif target.exists() or is_link_or_junction(target):
                     links.append(False)
             hist = prof_base / "history.jsonl"
-            if hist.is_symlink() and os.path.realpath(hist) == str(shared_base / "history.jsonl"):
+            shared_hist = shared_base / "history.jsonl"
+            if hist.exists() and same_path_or_file(hist, shared_hist):
                 links.append(True)
-            elif hist.exists() or hist.is_symlink():
+            elif hist.exists() or is_link_or_junction(hist):
                 links.append(False)
 
             if links and all(links):
@@ -428,8 +460,8 @@ def set_agy_shared_history(
                 for sub in SHARED_HISTORY_DIRS:
                     dst = prof_base / sub
                     src = shared_base / sub
-                    if dst.is_symlink():
-                        dst.unlink()
+                    if is_link_or_junction(dst):
+                        unlink_link(dst)
                         if copy_local and src.is_dir():
                             shutil.copytree(src, dst, dirs_exist_ok=True)
                         else:
@@ -437,8 +469,8 @@ def set_agy_shared_history(
                 for fn in SHARED_HISTORY_FILES:
                     dst = prof_base / fn
                     src = shared_base / fn
-                    if dst.is_symlink():
-                        dst.unlink()
+                    if is_link_or_junction(dst) or (dst.exists() and same_path_or_file(dst, src)):
+                        unlink_link(dst)
                         if copy_local and src.is_file():
                             shutil.copy2(src, dst)
                         elif fn == "history.jsonl":
@@ -446,8 +478,10 @@ def set_agy_shared_history(
                             os.close(fd)
                 meta_dst = prof_base / "cache" / "conversation_metadata.json"
                 meta_src = shared_base / "cache" / "conversation_metadata.json"
-                if meta_dst.is_symlink():
-                    meta_dst.unlink()
+                if is_link_or_junction(meta_dst) or (
+                    meta_dst.exists() and same_path_or_file(meta_dst, meta_src)
+                ):
+                    unlink_link(meta_dst)
                     if copy_local and meta_src.is_file():
                         shutil.copy2(meta_src, meta_dst)
                 unlinked.append(prof["name"])
@@ -532,8 +566,10 @@ def sync_agy_profiles(hub: Hub, *, home: Path | None = None) -> dict[str, Any]:
                     (src_playwright, prof_path / ".cache" / "ms-playwright-go"),
                 )
                 for src_item, dst_item in link_targets:
-                    if src_item.exists() and (not dst_item.exists() or dst_item.is_symlink()):
-                        _ensure_symlink(src_item, dst_item)
+                    if src_item.exists() and (
+                        not dst_item.exists() or is_link_or_junction(dst_item)
+                    ):
+                        _ensure_symlink(src_item, dst_item, copy_fallback=True)
                 synced.append(prof["name"])
         except BusyError:
             deferred_busy.append(prof["name"])

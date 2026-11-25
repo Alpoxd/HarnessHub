@@ -26,6 +26,7 @@ from harnesshub.providers.base import (
     cwd_matches,
     empty_tokens,
     epoch_to_iso,
+    is_link_or_junction,
     iso_to_epoch,
     iso_to_epoch_or_zero,
     model_family,
@@ -149,7 +150,7 @@ def scan_agy_token_stats(base: Path) -> dict[str, Any]:
             continue
 
     key = os.path.realpath(brain_dir)
-    is_shared = brain_dir.is_symlink()
+    is_shared = is_link_or_junction(brain_dir)
     sig = (len(transcripts), max_mtime_ns, sum_sizes)
     cached = _AGY_TOKEN_STATS_CACHE.get(key)
     if cached and cached[0] == sig:

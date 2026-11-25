@@ -361,7 +361,9 @@ def test_codex_sqlite_sessions_dedup_and_search(hub, tmp_path):
     shared_sessions.mkdir(parents=True)
     rollout = shared_sessions / "rollout-shared.jsonl"
     rollout.write_text('{"type":"session_meta","payload":{"id":"s-shared"}}\n', encoding="utf-8")
-    (Path(p2["path"]) / "sessions").symlink_to(Path(p1["path"]) / "sessions")
+    from harnesshub.providers.base import create_link
+
+    create_link(Path(p1["path"]) / "sessions", Path(p2["path"]) / "sessions")
 
     for prof in (p1, p2):
         con = sqlite3.connect(Path(prof["path"]) / "state_5.sqlite")

@@ -838,7 +838,20 @@ def execute(args: argparse.Namespace, hub: Hub, trailing: tuple[str, ...]) -> An
     raise HubError("Неизвестная команда")
 
 
+def _configure_console_utf8() -> None:
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_console_utf8()
     argv = list(sys.argv[1:] if argv is None else argv)
     trailing: tuple[str, ...] = ()
     if "--" in argv:

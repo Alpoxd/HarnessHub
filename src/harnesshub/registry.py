@@ -102,8 +102,8 @@ BUILTINS = (
         "HOME",
         (),
         "https://antigravity.google/docs/getting-started?tab=cli",
-        "Изоляция аккаунтов проверена на Linux; автохил подключается отдельно.",
-        platforms=("linux",),
+        "Изоляция аккаунтов через HOME/USERPROFILE; встроенный автохил только на Linux x64.",
+        platforms=("linux", "darwin", "win32"),
         auth_env=("GOOGLE_API_KEY", "GEMINI_API_KEY"),
     ),
     Harness(

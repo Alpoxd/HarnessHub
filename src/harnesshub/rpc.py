@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from harnesshub.errors import HubError
+from harnesshub.proc import hidden_popen_kwargs, wrap_windows_command
 
 
 class JsonRpcStdioClient:
@@ -22,12 +23,13 @@ class JsonRpcStdioClient:
 
     def __enter__(self) -> JsonRpcStdioClient:
         self.proc = subprocess.Popen(
-            self.command,
+            wrap_windows_command(self.command),
             env=self.env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             bufsize=0,
+            **hidden_popen_kwargs(),
         )
         self._reader = threading.Thread(target=self._pump_stdout, daemon=True)
         self._reader.start()

@@ -12,6 +12,7 @@ from typing import Any
 from harnesshub.errors import HubError
 from harnesshub.locking import FileLock
 from harnesshub.network import validate_proxy
+from harnesshub.providers.base import atomic_replace
 
 NAME = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}\Z")
 ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*\Z")
@@ -171,7 +172,7 @@ class StateStore:
                     stream.write("\n")
                     stream.flush()
                     os.fsync(stream.fileno())
-                os.replace(temporary, self.path)
+                atomic_replace(temporary, self.path)
             finally:
                 temporary.unlink(missing_ok=True)
             return result

@@ -3,8 +3,11 @@ from __future__ import annotations
 import base64
 import json
 import os
+import stat
+import subprocess
 import tempfile
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -17,6 +20,7 @@ from platformdirs import user_data_path, user_state_path
 
 from harnesshub.catalog_loader import MODEL_ALIASES
 from harnesshub.locking import inspect_lock_state, resource_lock
+from harnesshub.proc import hidden_popen_kwargs
 
 if TYPE_CHECKING:
     from harnesshub.service import Hub
@@ -294,6 +298,20 @@ def safe_json_read(path: Path) -> dict[str, Any] | list[Any] | None:
         return None
 
 
+def atomic_replace(src: Path, dst: Path, *, retries: int = 4, os_name: str | None = None) -> None:
+    """Atomically replace dst with src, retrying briefly on Windows Defender/sharing locks."""
+    is_nt = (os_name or os.name) == "nt"
+    attempts = retries if is_nt else 1
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if not is_nt or attempt >= attempts - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1))
+
+
 def atomic_write_text(path: Path, content: str, mode: int = 0o600) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
@@ -304,9 +322,93 @@ def atomic_write_text(path: Path, content: str, mode: int = 0o600) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         tmp_path.chmod(mode)
-        os.replace(tmp_path, path)
+        atomic_replace(tmp_path, path)
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+def is_link_or_junction(path: Path, *, os_name: str | None = None) -> bool:
+    """Return True for POSIX/Windows symlinks as well as Windows NTFS directory junctions."""
+    try:
+        if path.is_symlink():
+            return True
+    except OSError:
+        return False
+    if (os_name or os.name) == "nt":
+        isjunction = getattr(os.path, "isjunction", None)
+        if callable(isjunction):
+            try:
+                if isjunction(path):
+                    return True
+            except OSError:
+                return False
+        try:
+            st = os.lstat(path)
+            attrs = getattr(st, "st_file_attributes", 0)
+            reparse = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x0400)
+            return bool(attrs & reparse)
+        except OSError:
+            return False
+    return False
+
+
+def unlink_link(path: Path, *, os_name: str | None = None) -> None:
+    """Safely remove a symlink or NTFS junction without touching target directory contents."""
+    if (os_name or os.name) == "nt" and path.is_dir() and is_link_or_junction(path, os_name="nt"):
+        os.rmdir(path)
+        return
+    path.unlink()
+
+
+def same_path_or_file(a: Path, b: Path) -> bool:
+    """Return True if two paths refer to the same file/dir (symlink, junction, or hardlink)."""
+    try:
+        if os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b)):
+            return True
+    except OSError:
+        pass
+    try:
+        return a.exists() and b.exists() and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def create_link(
+    src: Path,
+    dst: Path,
+    *,
+    os_name: str | None = None,
+    subprocess_mod: Any = subprocess,
+) -> str:
+    """Link dst -> src cross-platform (symlink; Windows falls back to NTFS junction/hardlink)."""
+    is_nt = (os_name or os.name) == "nt"
+    dst.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    is_dir = src.is_dir()
+    if not is_nt:
+        dst.symlink_to(src)
+        return "symlink"
+    try:
+        dst.symlink_to(src, target_is_directory=is_dir)
+        return "symlink"
+    except OSError:
+        if is_dir:
+            comspec = os.environ.get("COMSPEC", "cmd.exe")
+            completed = subprocess_mod.run(
+                [comspec, "/d", "/c", "mklink", "/J", str(dst), str(src)],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                check=False,
+                **hidden_popen_kwargs(os_name="nt"),
+            )
+            if completed.returncode == 0:
+                return "junction"
+            raise OSError(
+                f"Не удалось создать NTFS junction {dst} -> {src}: "
+                f"{(completed.stderr or completed.stdout or '').strip()}"
+            ) from None
+        os.link(src, dst)
+        return "hardlink"
 
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -375,7 +477,14 @@ def cwd_matches(session_cwd: str, target_cwd: str) -> bool:
     t_path = _normalize_cwd(target_cwd)
     if s_path is None or t_path is None:
         return False
-    return s_path == t_path or s_path.is_relative_to(t_path) or t_path.is_relative_to(s_path)
+    if s_path == t_path or s_path.is_relative_to(t_path) or t_path.is_relative_to(s_path):
+        return True
+    s_norm = os.path.normcase(str(s_path)).rstrip("\\/")
+    t_norm = os.path.normcase(str(t_path)).rstrip("\\/")
+    if s_norm == t_norm:
+        return True
+    sep = os.sep
+    return s_norm.startswith(t_norm + sep) or t_norm.startswith(s_norm + sep)
 
 
 def project_name(cwd: str) -> str:

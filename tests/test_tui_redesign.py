@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +11,7 @@ from textual.widgets import DataTable, Input, Select, Static, TabbedContent
 from harnesshub.cli import main
 from harnesshub.locking import FileLock, resource_lock
 from harnesshub.models import catalog_models, group_catalog_models, rank_candidates
-from harnesshub.providers.base import atomic_write_json, classify_agy_tier
+from harnesshub.providers.base import atomic_write_json, classify_agy_tier, create_link
 from harnesshub.service import Hub
 from harnesshub.telemetry import account_telemetry
 from harnesshub.tui import HarnessHubApp, ResumeProfileForm
@@ -214,7 +213,7 @@ def test_shared_agy_brain_tokens_are_deduplicated_in_catalog_and_cli(
     p2_brain = p2_agy_dir / "brain"
     if p2_brain.exists() and not p2_brain.is_symlink():
         p2_brain.rmdir()
-    os.symlink(shared_brain, p2_brain)
+    create_link(shared_brain, p2_brain)
 
     rows = catalog_models(hub, provider="agy")
     hydro = next(r for r in rows if r["model"] == "gemini-4-hydrogen-high")

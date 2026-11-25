@@ -112,6 +112,9 @@ class Hub:
                 config.chmod(0o600)
             elif provider == "agy":
                 (path / ".gemini" / "antigravity-cli").mkdir(mode=0o700, parents=True)
+                if sys.platform == "win32":
+                    (path / "AppData" / "Roaming").mkdir(parents=True, exist_ok=True)
+                    (path / "AppData" / "Local").mkdir(parents=True, exist_ok=True)
 
         self.store.update(change)
         if provider == "agy" and self.store.read()["settings"].get("agy_shared_history", False):
@@ -206,16 +209,25 @@ class Hub:
                     env["LANG"] = "en_US.UTF-8"
                     env["LC_ALL"] = "C.UTF-8"
                     env["LANGUAGE"] = "en_US"
-                real_home = resolve_real_home(self)
-                resolved_path = path.resolve()
-                token_file = path / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
-                if resolved_path != real_home or (
-                    token_file.is_file() and token_file.stat().st_size > 0
-                ):
-                    env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/nonexistent/bus"
-                env["XDG_CONFIG_HOME"] = str(path / ".config")
-                env["XDG_CACHE_HOME"] = str(path / ".cache")
-                env["XDG_DATA_HOME"] = str(path / ".local" / "share")
+                if sys.platform == "win32":
+                    env["USERPROFILE"] = str(path)
+                    env["APPDATA"] = str(path / "AppData" / "Roaming")
+                    env["LOCALAPPDATA"] = str(path / "AppData" / "Local")
+                    drive, homepath = os.path.splitdrive(str(path))
+                    if drive:
+                        env["HOMEDRIVE"] = drive
+                        env["HOMEPATH"] = homepath or "\\"
+                else:
+                    real_home = resolve_real_home(self)
+                    resolved_path = path.resolve()
+                    token_file = path / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+                    if resolved_path != real_home or (
+                        token_file.is_file() and token_file.stat().st_size > 0
+                    ):
+                        env["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/nonexistent/bus"
+                    env["XDG_CONFIG_HOME"] = str(path / ".config")
+                    env["XDG_CACHE_HOME"] = str(path / ".cache")
+                    env["XDG_DATA_HOME"] = str(path / ".local" / "share")
         policy, _ = self.proxy_policy(provider, profile)
         return proxy_environment(env, policy)
 
@@ -452,7 +464,7 @@ class Hub:
         else:
             spec = self.harness(provider)
             relocated = env.get(spec.config_env) if spec.config_env else None
-            home = Path(env.get("HOME", str(Path.home())))
+            home = Path(env.get("USERPROFILE") or env.get("HOME") or str(Path.home()))
             if relocated:
                 identity = Path(relocated).expanduser()
                 if not identity.is_absolute():
@@ -468,7 +480,9 @@ class Hub:
                     env=proxy_environment(dict(os.environ), policy),
                     fast_check=True,
                 )
-            process = subprocess.Popen(command, env=env, cwd=cwd)
+            from harnesshub.proc import wrap_windows_command
+
+            process = subprocess.Popen(wrap_windows_command(command), env=env, cwd=cwd)
             while True:
                 try:
                     code = process.wait()

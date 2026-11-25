@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from harnesshub.cli import main
 from harnesshub.consult import headless_command
 from harnesshub.errors import HubError
 from harnesshub.locking import FileLock, resource_lock
+from harnesshub.providers.base import is_link_or_junction, same_path_or_file
 from harnesshub.service import Hub
 from harnesshub.sessions import list_sessions
 from harnesshub.tui import HarnessHubApp
@@ -254,17 +254,17 @@ def test_agy_shared_history_merges_chats_and_keeps_tokens_isolated(
     assert res["canonical"] == ["main"]
 
     # Tokens MUST remain strictly isolated regular files
-    assert not (base1 / "antigravity-oauth-token").is_symlink()
-    assert not (base2 / "antigravity-oauth-token").is_symlink()
+    assert not is_link_or_junction(base1 / "antigravity-oauth-token")
+    assert not is_link_or_junction(base2 / "antigravity-oauth-token")
     assert "acc1@example.com" in (base1 / "antigravity-oauth-token").read_text(encoding="utf-8")
     assert "acc2@example.com" in (base2 / "antigravity-oauth-token").read_text(encoding="utf-8")
     assert "main@example.com" in (main_base / "antigravity-oauth-token").read_text(encoding="utf-8")
 
     # History dirs/files in profiles point to shared canonical store
-    assert os.path.realpath(base1 / "brain") == str((main_base / "brain").resolve())
-    assert os.path.realpath(base2 / "conversations") == str((main_base / "conversations").resolve())
-    assert os.path.realpath(base1 / "conversation_summaries.db") == str(
-        (main_base / "conversation_summaries.db").resolve()
+    assert same_path_or_file(base1 / "brain", main_base / "brain")
+    assert same_path_or_file(base2 / "conversations", main_base / "conversations")
+    assert same_path_or_file(
+        base1 / "conversation_summaries.db", main_base / "conversation_summaries.db"
     )
     assert not (base1 / "conversation_summaries.db-wal").exists()
 
@@ -301,14 +301,14 @@ def test_agy_shared_history_merges_chats_and_keeps_tokens_isolated(
     # Newly created AGY profile automatically links when share-history is ON
     acc3 = hub.create("agy", "acc3")
     base3 = Path(acc3["path"]) / ".gemini" / "antigravity-cli"
-    assert (base3 / "brain").is_symlink()
-    assert os.path.realpath(base3 / "brain") == str((main_base / "brain").resolve())
+    assert is_link_or_junction(base3 / "brain")
+    assert same_path_or_file(base3 / "brain", main_base / "brain")
 
     # Turning off share-history restores independent local dirs while keeping canonical data intact
     off_res = set_agy_shared_history(hub, False, home=fake_home, copy_local=False)
     assert off_res["enabled"] is False
     assert set(off_res["unlinked"]) == {"acc1", "acc2", "acc3"}
-    assert (base1 / "brain").is_dir() and not (base1 / "brain").is_symlink()
+    assert (base1 / "brain").is_dir() and not is_link_or_junction(base1 / "brain")
     assert (main_base / "brain" / "conv-1").is_dir()
 
 
@@ -360,7 +360,10 @@ def test_agy_shared_history_skips_busy_profile_and_sync_adapts_tiers(
     assert s2["model"] == "Gemini 3.8 Flash (High)"
     assert "orchestrator" not in s2
     assert (Path(acc2["path"]) / ".agents" / "skills" / "demo" / "SKILL.md").read_text() == "hi\n"
-    assert (Path(acc1["path"]) / ".gemini" / "config" / "GEMINI.md").is_symlink()
+    assert same_path_or_file(
+        Path(acc1["path"]) / ".gemini" / "config" / "GEMINI.md",
+        fake_home / ".gemini" / "config" / "GEMINI.md",
+    )
 
     # Busy profile is deferred instead of crashing
     with FileLock(resource_lock(Path(acc1["path"]), hub.lock_root), shared=True):
@@ -380,7 +383,7 @@ def test_agy_shared_history_skips_busy_profile_and_sync_adapts_tiers(
 
     monkeypatch.setattr("harnesshub.service.subprocess.Popen", lambda *a, **kw: _DoneProc())
     assert hub.launch("agy", "acc1", cwd=tmp_path) == 0
-    assert (Path(acc1["path"]) / ".gemini" / "antigravity-cli" / "brain").is_symlink()
+    assert is_link_or_junction(Path(acc1["path"]) / ".gemini" / "antigravity-cli" / "brain")
 
 
 async def test_agy_cli_and_tui_workspace_controls(

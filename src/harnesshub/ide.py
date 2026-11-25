@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from harnesshub.errors import BusyError, HubError
 from harnesshub.locking import FileLock, resource_lock
 from harnesshub.network import proxy_environment, public_proxy
+from harnesshub.proc import detached_popen_kwargs, wrap_windows_command
 from harnesshub.providers.base import is_profile_locked
 
 if TYPE_CHECKING:
@@ -63,6 +64,11 @@ IDE_ALIASES: dict[str, str] = {
 _PROVIDER_ISOLATED_KEYS: dict[str, tuple[str, ...]] = {
     "agy": (
         "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "HOMEDRIVE",
+        "HOMEPATH",
         "DBUS_SESSION_BUS_ADDRESS",
         "XDG_CONFIG_HOME",
         "XDG_CACHE_HOME",
@@ -70,6 +76,25 @@ _PROVIDER_ISOLATED_KEYS: dict[str, tuple[str, ...]] = {
     ),
     "claude": ("CLAUDE_CONFIG_DIR",),
     "codex": ("CODEX_HOME",),
+}
+
+_WINDOWS_IDE_CANDIDATES: dict[str, tuple[tuple[str, str], ...]] = {
+    "vscode": (
+        ("LOCALAPPDATA", r"Programs\Microsoft VS Code\bin\code.cmd"),
+        ("ProgramFiles", r"Microsoft VS Code\bin\code.cmd"),
+        ("LOCALAPPDATA", r"Programs\Microsoft VS Code\Code.exe"),
+        ("ProgramFiles", r"Microsoft VS Code\Code.exe"),
+    ),
+    "cursor": (
+        ("LOCALAPPDATA", r"Programs\cursor\resources\app\bin\cursor.cmd"),
+        ("LOCALAPPDATA", r"Programs\cursor\Cursor.exe"),
+    ),
+    "agy": (
+        ("LOCALAPPDATA", r"Programs\Antigravity\bin\antigravity.cmd"),
+        ("LOCALAPPDATA", r"Programs\Antigravity\Antigravity.exe"),
+        ("ProgramFiles", r"Antigravity\bin\antigravity.cmd"),
+        ("ProgramFiles", r"Antigravity\Antigravity.exe"),
+    ),
 }
 
 
@@ -84,11 +109,22 @@ def resolve_ide_target(target: str) -> IdeTarget:
     return IDE_TARGETS[key]
 
 
-def find_ide_executable(spec: IdeTarget) -> str | None:
+def find_ide_executable(
+    spec: IdeTarget, *, os_name: str | None = None, environ: Any = None
+) -> str | None:
     for cmd in spec.commands:
         path = shutil.which(cmd)
         if path:
             return path
+    if (os_name or os.name) == "nt":
+        env_map = os.environ if environ is None else environ
+        for env_key, rel_path in _WINDOWS_IDE_CANDIDATES.get(spec.id, ()):
+            base = env_map.get(env_key)
+            if not base:
+                continue
+            candidate = Path(base) / Path(*rel_path.split("\\"))
+            if candidate.is_file():
+                return str(candidate)
     return None
 
 
@@ -135,7 +171,7 @@ def build_ide_plan(
         selected_profiles["codex"] = hub.profile("codex", None)
 
     env = dict(os.environ)
-    real_home = Path(env.get("HOME", str(Path.home())))
+    real_home = Path(env.get("USERPROFILE") or env.get("HOME") or str(Path.home()))
     isolated_env: dict[str, str] = {}
 
     primary_profile: dict[str, Any] | None = None
@@ -240,21 +276,22 @@ def launch_ide(
                 f"Профиль {prof['provider']}/{prof['name']} занят эксклюзивной операцией"
             )
     Path(plan["user_data_dir"]).mkdir(mode=0o700, parents=True, exist_ok=True)
+    launch_cmd = wrap_windows_command(plan["command"])
     if wait:
         with ExitStack() as stack:
             for prof in selected_list:
                 stack.enter_context(
                     FileLock(resource_lock(Path(prof["path"]), hub.lock_root), shared=True)
                 )
-            completed = subprocess.run(plan["command"], env=env, cwd=plan["cwd"], check=False)
+            completed = subprocess.run(launch_cmd, env=env, cwd=plan["cwd"], check=False)
         return {**plan, "status": "completed", "returncode": completed.returncode}
     process = subprocess.Popen(
-        plan["command"],
+        launch_cmd,
         env=env,
         cwd=plan["cwd"],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        start_new_session=True,
+        **detached_popen_kwargs(),
     )
     return {**plan, "status": "launched", "pid": process.pid}
