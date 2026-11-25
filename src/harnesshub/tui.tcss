@@ -1,0 +1,500 @@
+/* HarnessHub TUI — Graphite & Steel palette, compact layout */
+
+Screen {
+    background: #0d1117;
+    color: #e6edf3;
+}
+
+Header {
+    background: #141923;
+    color: #e6edf3;
+    height: 1;
+}
+
+Footer {
+    background: #141923;
+    color: #8b949e;
+    height: 1;
+}
+
+/* Global topbar: brand, global project path, automode & quota refresh */
+#topbar {
+    height: 3;
+    padding: 0 1;
+    background: #141923;
+    border-bottom: solid #273142;
+    align-vertical: middle;
+}
+#brand {
+    width: auto;
+    min-width: 12;
+    padding-right: 2;
+    content-align: left middle;
+    height: 1;
+}
+#project-label {
+    width: auto;
+    color: #8b949e;
+    padding-right: 1;
+    height: 1;
+    content-align: left middle;
+}
+#project {
+    width: 1fr;
+    margin-right: 1;
+    background: #0d1117;
+    border: none;
+    height: 1;
+}
+#project:focus {
+    background: #1b2230;
+}
+#totals {
+    width: auto;
+    color: #768390;
+    padding: 0 1;
+    height: 1;
+    content-align: right middle;
+}
+#toggle-automode {
+    width: auto;
+    min-width: 14;
+    margin-right: 1;
+}
+#probe-all {
+    width: auto;
+    min-width: 11;
+}
+
+/* Tabs */
+#main-tabs {
+    height: 1fr;
+}
+#main-tabs > ContentSwitcher {
+    height: 1fr;
+}
+Tabs {
+    background: #141923;
+    border-bottom: solid #273142;
+    height: 2;
+}
+Tab {
+    color: #8b949e;
+    padding: 0 2;
+    height: 1;
+}
+Tab.-active {
+    color: #ffffff;
+    text-style: bold;
+}
+Underline > .underline--bar {
+    color: #58a6ff;
+    background: #273142;
+}
+TabPane {
+    padding: 0 1;
+    height: 1fr;
+}
+
+/* Compact flat buttons */
+Button {
+    min-width: 7;
+    height: 1;
+    border: none;
+    padding: 0 1;
+    background: #21262d;
+    color: #e6edf3;
+    text-style: none;
+}
+Button:hover {
+    background: #30363d;
+    color: #ffffff;
+}
+Button:focus {
+    background: #30363d;
+    color: #ffffff;
+    text-style: bold underline;
+}
+Button.-primary {
+    background: #1f6feb;
+    color: #ffffff;
+    text-style: bold;
+}
+Button.-primary:hover {
+    background: #388bfd;
+}
+Button.-error {
+    background: #3b1c20;
+    color: #f85149;
+}
+Button.-error:hover {
+    background: #5a2228;
+    color: #ff7b72;
+}
+Button.-active-toggle {
+    background: #163022;
+    color: #3fb950;
+}
+Button.-active-toggle:hover {
+    background: #1f4531;
+}
+Button:disabled {
+    background: #161b22;
+    color: #484f58;
+}
+
+/* Compact inputs & selects */
+Input {
+    background: #141923;
+    border: solid #273142;
+    color: #e6edf3;
+}
+Input:focus {
+    border: solid #58a6ff;
+}
+Select {
+    background: #141923;
+}
+SelectCurrent {
+    background: #141923;
+    color: #e6edf3;
+}
+Select:focus > SelectCurrent {
+    background: #1b2230;
+}
+
+/* Tab 1: Accounts */
+#profiles-layout {
+    height: 1fr;
+}
+#sidebar {
+    width: 22;
+    padding: 0 1;
+    border-right: solid #273142;
+    background: #11161f;
+}
+.section-label {
+    color: #8b949e;
+    text-style: bold;
+    height: 1;
+    margin: 1 0 0 0;
+}
+#harness-list {
+    border: none;
+    height: 1fr;
+    background: transparent;
+    padding: 0;
+}
+#harness-list > .option-list--option-highlighted {
+    background: #1f2a3c;
+    color: #ffffff;
+    text-style: bold;
+}
+#workspace {
+    width: 1fr;
+    padding: 0 0 0 1;
+    height: 1fr;
+}
+#harness-heading {
+    height: 1;
+    margin-top: 1;
+    align-vertical: middle;
+}
+#harness-heading #harness-title {
+    width: 1fr;
+    height: 1;
+    content-align: left middle;
+}
+#install-harness {
+    width: auto;
+    margin-right: 1;
+}
+#probe-provider {
+    width: auto;
+}
+#harness-note {
+    height: auto;
+    max-height: 1;
+    color: #768390;
+}
+#profiles {
+    height: 8;
+    min-height: 4;
+    margin-top: 1;
+    background: #141923;
+    border: solid #273142;
+}
+#profile-empty {
+    height: auto;
+    max-height: 1;
+    color: #768390;
+}
+#account-inspector-box {
+    height: 1fr;
+    min-height: 5;
+    margin-top: 1;
+    padding: 0 1;
+    background: #141923;
+    border: solid #273142;
+}
+#account-inspector {
+    height: auto;
+}
+#account-launch-row {
+    height: 1;
+    margin-top: 1;
+    align-vertical: middle;
+}
+#account-model-select {
+    width: 1fr;
+    margin-right: 1;
+}
+#account-launch-row Button {
+    width: auto;
+    margin-left: 1;
+}
+#profile-mgmt-row {
+    height: 1;
+    margin-top: 1;
+    align-vertical: middle;
+}
+#profile-mgmt-row Button {
+    width: auto;
+    margin-right: 1;
+}
+#mgmt-spacer {
+    width: 1fr;
+    height: 1;
+}
+
+/* Action rows across tabs */
+.actions {
+    width: 100%;
+    height: 1;
+    margin-top: 1;
+    align-vertical: middle;
+}
+.actions Button {
+    width: auto;
+    margin-right: 1;
+}
+
+/* Tab 2: Models (Model-First) */
+#models-filters {
+    height: 1;
+    margin: 1 0;
+    align-vertical: middle;
+}
+#registry-provider-filter {
+    width: 20;
+    margin-right: 1;
+}
+#registry-family-filter {
+    width: 18;
+    margin-right: 1;
+}
+#effort-filter {
+    width: 18;
+    margin-right: 1;
+}
+#smart-model-select {
+    width: 1fr;
+}
+#models-registry {
+    height: 1fr;
+    min-height: 5;
+    background: #141923;
+    border: solid #273142;
+}
+#candidates-heading {
+    height: 1;
+    margin-top: 1;
+    color: #8b949e;
+    text-style: bold;
+}
+#model-candidates {
+    height: 1fr;
+    min-height: 5;
+    background: #141923;
+    border: solid #273142;
+}
+
+/* Tab 3: Sessions */
+#sessions-filters {
+    height: 1;
+    margin: 1 0;
+    align-vertical: middle;
+}
+#sessions-provider-filter {
+    width: 18;
+    margin-right: 1;
+}
+#sessions-profile-filter {
+    width: 18;
+    margin-right: 1;
+}
+#sessions-search {
+    width: 1fr;
+    margin-right: 1;
+    background: #141923;
+    border: none;
+    height: 1;
+}
+#session-scope {
+    width: auto;
+}
+#sessions-main {
+    height: 1fr;
+}
+#sessions-table {
+    width: 3fr;
+    height: 1fr;
+    min-height: 5;
+    background: #141923;
+    border: solid #273142;
+    margin-right: 1;
+}
+#session-preview-box {
+    width: 2fr;
+    height: 1fr;
+    min-height: 5;
+    padding: 0 1;
+    background: #141923;
+    border: solid #273142;
+}
+#session-preview {
+    height: auto;
+}
+
+/* Tab 4: Settings (Network + AGY Workspace + Maintenance) */
+#settings-scroll {
+    height: 1fr;
+}
+.settings-card {
+    height: auto;
+    width: 100%;
+    padding: 1 2;
+    margin-top: 1;
+    background: #141923;
+    border: solid #273142;
+}
+.card-title {
+    color: #e6edf3;
+    text-style: bold;
+    height: 1;
+    margin-bottom: 1;
+}
+.settings-row {
+    width: 100%;
+    height: 1;
+    margin-top: 1;
+    align-vertical: middle;
+}
+.settings-row Select {
+    width: 30;
+    margin-right: 1;
+}
+.settings-row Button {
+    width: auto;
+    margin-right: 1;
+}
+.network-summary {
+    height: auto;
+    width: 100%;
+    color: #c9d1d9;
+}
+
+/* Tables & status bar */
+DataTable > .datatable--header {
+    background: #1b2230;
+    color: #c9d1d9;
+    text-style: bold;
+}
+DataTable > .datatable--cursor {
+    background: #1f334d;
+    color: #ffffff;
+}
+#activity {
+    height: 1;
+    padding: 0 1;
+    background: #141923;
+    border-top: solid #273142;
+    color: #8b949e;
+    content-align: left middle;
+}
+.muted {
+    color: #768390;
+    height: auto;
+}
+
+/* Modals */
+ModalScreen {
+    align: center middle;
+    background: #000000 70%;
+}
+#dialog, #discovery-dialog {
+    width: 68;
+    height: auto;
+    max-height: 90%;
+    padding: 1 2;
+    background: #161b22;
+    border: solid #58a6ff;
+}
+.dialog-title {
+    text-style: bold;
+    color: #e6edf3;
+    height: 1;
+    margin-bottom: 1;
+}
+#dialog Label {
+    margin-top: 1;
+    color: #8b949e;
+}
+#dialog Input {
+    margin: 0 0 1 0;
+}
+.dialog-actions {
+    height: 1;
+    align-horizontal: right;
+    margin-top: 1;
+}
+.dialog-actions Button {
+    margin-left: 1;
+}
+#discovery-dialog {
+    width: 90%;
+    height: 70%;
+}
+#existing-table {
+    height: 1fr;
+    margin-top: 1;
+    background: #141923;
+    border: solid #273142;
+}
+
+/* Compact viewport (<100w or <36h) */
+.compact #sidebar {
+    width: 18;
+    padding: 0;
+}
+.compact #totals {
+    display: none;
+}
+.compact #harness-heading {
+    margin-top: 0;
+}
+.compact #profiles {
+    height: 6;
+    margin-top: 0;
+}
+.compact #account-inspector-box {
+    min-height: 4;
+    margin-top: 0;
+}
+.compact #models-filters, .compact #sessions-filters {
+    margin: 0;
+}
+.compact .settings-card {
+    padding: 0 1;
+    margin-top: 0;
+}
